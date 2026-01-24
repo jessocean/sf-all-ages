@@ -1,26 +1,36 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { VenueCard } from "@/components/VenueCard";
 import { EventCard } from "@/components/EventCard";
 import { FilterBar, Filters, defaultFilters } from "@/components/FilterBar";
 import { SubscribeForm } from "@/components/SubscribeForm";
 import { Venue, Event } from "@/lib/schema";
 import { calculateDistance } from "@/lib/distance";
+import { calculateRelevanceScore, ScoredItem, sortByRelevance } from "@/lib/scoring";
+import { getTotalPartySize } from "@/lib/pricing";
+import { isAvailableForTimeFilter } from "@/components/TimeFilter";
+import { getEstimatedTravelTimes, TravelTimes } from "@/lib/travel";
 
-interface VenueWithDistance extends Venue {
-  distance?: number;
+interface ScoredVenue extends Venue {
+  distance: number;
+  relevanceScore: number;
+  matchReasons: string[];
+  travelTimes?: TravelTimes;
 }
 
-interface EventWithDistance extends Event {
-  distance?: number;
+interface ScoredEvent extends Event {
+  distance: number;
+  relevanceScore: number;
+  matchReasons: string[];
   venueName?: string;
+  travelTimes?: TravelTimes;
 }
 
 export default function Home() {
   const [filters, setFilters] = useState<Filters>(defaultFilters);
-  const [venues, setVenues] = useState<VenueWithDistance[]>([]);
-  const [events, setEvents] = useState<EventWithDistance[]>([]);
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"all" | "venues" | "events">("all");
 
@@ -52,47 +62,80 @@ export default function Home() {
     fetchData();
   }, []);
 
-  // Apply filters and sorting
-  const filteredVenues = venues
-    .map((venue) => ({
-      ...venue,
-      distance: filters.location
-        ? calculateDistance(
-            filters.location.lat,
-            filters.location.lng,
-            venue.latitude || 0,
-            venue.longitude || 0
-          )
-        : undefined,
-    }))
-    .filter((venue) => {
-      // Filter by venue type
-      if (filters.venueTypes.length > 0 && !filters.venueTypes.includes(venue.venueType || "")) {
-        return false;
-      }
+  // Check if party has any members
+  const hasPartyMembers = useMemo(() => {
+    return getTotalPartySize(filters.party) > 0;
+  }, [filters.party]);
 
-      // Filter by age group
-      const { toddlers, youngKids, teens } = filters.ageGroups;
-      if (toddlers && !venue.toddlerFriendly) return false;
-      if (youngKids && !venue.youngKidFriendly) return false;
-      if (teens && !venue.teenFriendly) return false;
+  // Apply filters, scoring, and sorting
+  const filteredVenues = useMemo<ScoredVenue[]>(() => {
+    return venues
+      .map((venue) => {
+        const distance = filters.location
+          ? calculateDistance(
+              filters.location.lat,
+              filters.location.lng,
+              venue.latitude || 0,
+              venue.longitude || 0
+            )
+          : 0;
 
-      return true;
-    })
-    .sort((a, b) => {
-      if (a.distance !== undefined && b.distance !== undefined) {
+        const { score, reasons } = calculateRelevanceScore(
+          venue,
+          "venue",
+          distance,
+          filters.party
+        );
+
+        // Get estimated travel times based on distance
+        const travelTimes = filters.location
+          ? getEstimatedTravelTimes(distance)
+          : undefined;
+
+        return {
+          ...venue,
+          distance,
+          relevanceScore: score,
+          matchReasons: reasons,
+          travelTimes,
+        };
+      })
+      .filter((venue) => {
+        // Filter by venue type
+        if (
+          filters.venueTypes.length > 0 &&
+          !filters.venueTypes.includes(venue.venueType || "")
+        ) {
+          return false;
+        }
+
+        // Filter by time (only for "now" filter, check if open)
+        if (!isAvailableForTimeFilter(filters.timeFilter, null, null, venue.hoursJson)) {
+          return false;
+        }
+
+        // Filter by party age groups - if we have members of an age, venue should support them
+        const { party } = filters;
+        if (party.toddlers > 0 && !venue.toddlerFriendly) return false;
+        if (party.kids > 0 && !venue.youngKidFriendly) return false;
+        if (party.teens > 0 && !venue.teenFriendly) return false;
+
+        return true;
+      })
+      .sort((a, b) => {
+        // Sort by relevance score (descending), then distance (ascending)
+        if (b.relevanceScore !== a.relevanceScore) {
+          return b.relevanceScore - a.relevanceScore;
+        }
         return a.distance - b.distance;
-      }
-      return 0;
-    });
+      });
+  }, [venues, filters]);
 
-  const filteredEvents = events
-    .map((event) => {
-      const venue = venues.find((v) => v.id === event.venueId);
-      return {
-        ...event,
-        venueName: venue?.name,
-        distance:
+  const filteredEvents = useMemo<ScoredEvent[]>(() => {
+    return events
+      .map((event) => {
+        const venue = venues.find((v) => v.id === event.venueId);
+        const distance =
           filters.location && venue?.latitude && venue?.longitude
             ? calculateDistance(
                 filters.location.lat,
@@ -100,33 +143,89 @@ export default function Home() {
                 venue.latitude,
                 venue.longitude
               )
-            : undefined,
-      };
-    })
-    .filter((event) => {
-      // Filter by event type
-      if (filters.eventTypes.length > 0 && !filters.eventTypes.includes(event.eventType || "")) {
-        return false;
-      }
+            : 0;
 
-      // Filter by age group
-      const { toddlers, youngKids, teens } = filters.ageGroups;
-      if (toddlers && !event.toddlerFriendly) return false;
-      if (youngKids && !event.youngKidFriendly) return false;
-      if (teens && !event.teenFriendly) return false;
+        const { score, reasons } = calculateRelevanceScore(
+          event,
+          "event",
+          distance,
+          filters.party
+        );
 
-      return true;
-    })
-    .sort((a, b) => {
-      // Sort by date first, then distance
-      const dateCompare = new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
-      if (dateCompare !== 0) return dateCompare;
+        // Get estimated travel times based on distance
+        const travelTimes =
+          filters.location && distance > 0
+            ? getEstimatedTravelTimes(distance)
+            : undefined;
 
-      if (a.distance !== undefined && b.distance !== undefined) {
-        return a.distance - b.distance;
-      }
-      return 0;
-    });
+        return {
+          ...event,
+          venueName: venue?.name,
+          distance,
+          relevanceScore: score,
+          matchReasons: reasons,
+          travelTimes,
+        };
+      })
+      .filter((event) => {
+        // Filter by event type
+        if (
+          filters.eventTypes.length > 0 &&
+          !filters.eventTypes.includes(event.eventType || "")
+        ) {
+          return false;
+        }
+
+        // Filter by time
+        if (
+          !isAvailableForTimeFilter(
+            filters.timeFilter,
+            event.startTime,
+            event.endTime
+          )
+        ) {
+          return false;
+        }
+
+        // Filter by party age groups
+        const { party } = filters;
+        if (party.toddlers > 0 && !event.toddlerFriendly) return false;
+        if (party.kids > 0 && !event.youngKidFriendly) return false;
+        if (party.teens > 0 && !event.teenFriendly) return false;
+
+        return true;
+      })
+      .sort((a, b) => {
+        // Sort by relevance score (descending), then by date
+        if (b.relevanceScore !== a.relevanceScore) {
+          return b.relevanceScore - a.relevanceScore;
+        }
+        return (
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        );
+      });
+  }, [events, venues, filters]);
+
+  // Combine and sort all items for "All" view
+  const allItems = useMemo<ScoredItem[]>(() => {
+    const venueItems: ScoredItem[] = filteredVenues.map((v) => ({
+      item: v,
+      type: "venue" as const,
+      relevanceScore: v.relevanceScore,
+      distanceMiles: v.distance,
+      matchReasons: v.matchReasons,
+    }));
+
+    const eventItems: ScoredItem[] = filteredEvents.map((e) => ({
+      item: e,
+      type: "event" as const,
+      relevanceScore: e.relevanceScore,
+      distanceMiles: e.distance,
+      matchReasons: e.matchReasons,
+    }));
+
+    return sortByRelevance([...venueItems, ...eventItems]);
+  }, [filteredVenues, filteredEvents]);
 
   return (
     <div>
@@ -134,20 +233,17 @@ export default function Home() {
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-5xl mx-auto px-4 py-8">
           <h1 className="text-2xl font-semibold text-gray-900">
-            Find places & events where everyone is welcome
+            SF All-Ages Social Club
           </h1>
           <p className="mt-2 text-gray-600">
-            Kid-friendly spots in San Francisco that aren&apos;t just for kids.
+            Find places & events where everyone is welcome. Kid-friendly spots
+            that aren&apos;t just for kids.
           </p>
         </div>
       </div>
 
       {/* Filters */}
-      <FilterBar
-        filters={filters}
-        onFiltersChange={setFilters}
-        mode={activeTab}
-      />
+      <FilterBar filters={filters} onFiltersChange={setFilters} mode={activeTab} />
 
       {/* Main Content */}
       <div className="max-w-5xl mx-auto px-4 py-6">
@@ -161,7 +257,7 @@ export default function Home() {
                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"
             }`}
           >
-            All
+            Best Matches
           </button>
           <button
             onClick={() => setActiveTab("venues")}
@@ -191,75 +287,99 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main listings */}
             <div className="lg:col-span-2 space-y-4">
-              {/* Venues */}
-              {(activeTab === "all" || activeTab === "venues") && (
+              {/* All - Intermingled by relevance */}
+              {activeTab === "all" && (
                 <>
-                  {activeTab === "all" && filteredVenues.length > 0 && (
-                    <h2 className="text-lg font-medium text-gray-900 mt-4 first:mt-0">
-                      Places
-                    </h2>
-                  )}
-                  {filteredVenues.length === 0 && activeTab === "venues" ? (
+                  {allItems.length === 0 ? (
                     <p className="text-gray-500 py-8 text-center">
-                      No places match your filters. Try adjusting them.
+                      No places or events match your criteria. Try adjusting
+                      your filters.
                     </p>
                   ) : (
-                    filteredVenues.slice(0, activeTab === "all" ? 4 : undefined).map((venue) => (
-                      <VenueCard
-                        key={venue.id}
-                        venue={venue}
-                        distance={venue.distance}
-                      />
-                    ))
-                  )}
-                  {activeTab === "all" && filteredVenues.length > 4 && (
-                    <button
-                      onClick={() => setActiveTab("venues")}
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      See all {filteredVenues.length} places →
-                    </button>
+                    <>
+                      {allItems.slice(0, 10).map((item) =>
+                        item.type === "venue" ? (
+                          <VenueCard
+                            key={`venue-${item.item.id}`}
+                            venue={item.item as Venue}
+                            distance={item.distanceMiles}
+                            party={hasPartyMembers ? filters.party : undefined}
+                            travelTimes={
+                              (item.item as ScoredVenue).travelTimes
+                            }
+                            relevanceScore={item.relevanceScore}
+                            matchReasons={item.matchReasons}
+                          />
+                        ) : (
+                          <EventCard
+                            key={`event-${item.item.id}`}
+                            event={item.item as Event}
+                            distance={item.distanceMiles}
+                            venueName={(item.item as ScoredEvent).venueName}
+                            party={hasPartyMembers ? filters.party : undefined}
+                            travelTimes={
+                              (item.item as ScoredEvent).travelTimes
+                            }
+                            relevanceScore={item.relevanceScore}
+                            matchReasons={item.matchReasons}
+                          />
+                        )
+                      )}
+                      {allItems.length > 10 && (
+                        <p className="text-sm text-gray-500 text-center py-2">
+                          Showing top 10 matches. Use filters to narrow results.
+                        </p>
+                      )}
+                    </>
                   )}
                 </>
               )}
 
-              {/* Events */}
-              {(activeTab === "all" || activeTab === "events") && (
+              {/* Venues only */}
+              {activeTab === "venues" && (
                 <>
-                  {activeTab === "all" && filteredEvents.length > 0 && (
-                    <h2 className="text-lg font-medium text-gray-900 mt-6">
-                      Upcoming Events
-                    </h2>
+                  {filteredVenues.length === 0 ? (
+                    <p className="text-gray-500 py-8 text-center">
+                      No places match your filters. Try adjusting them.
+                    </p>
+                  ) : (
+                    filteredVenues.map((venue) => (
+                      <VenueCard
+                        key={venue.id}
+                        venue={venue}
+                        distance={venue.distance}
+                        party={hasPartyMembers ? filters.party : undefined}
+                        travelTimes={venue.travelTimes}
+                        relevanceScore={venue.relevanceScore}
+                        matchReasons={venue.matchReasons}
+                      />
+                    ))
                   )}
-                  {filteredEvents.length === 0 && activeTab === "events" ? (
+                </>
+              )}
+
+              {/* Events only */}
+              {activeTab === "events" && (
+                <>
+                  {filteredEvents.length === 0 ? (
                     <p className="text-gray-500 py-8 text-center">
                       No events match your filters. Try adjusting them.
                     </p>
                   ) : (
-                    filteredEvents.slice(0, activeTab === "all" ? 4 : undefined).map((event) => (
+                    filteredEvents.map((event) => (
                       <EventCard
                         key={event.id}
                         event={event}
                         distance={event.distance}
                         venueName={event.venueName}
+                        party={hasPartyMembers ? filters.party : undefined}
+                        travelTimes={event.travelTimes}
+                        relevanceScore={event.relevanceScore}
+                        matchReasons={event.matchReasons}
                       />
                     ))
                   )}
-                  {activeTab === "all" && filteredEvents.length > 4 && (
-                    <button
-                      onClick={() => setActiveTab("events")}
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      See all {filteredEvents.length} events →
-                    </button>
-                  )}
                 </>
-              )}
-
-              {filteredVenues.length === 0 && filteredEvents.length === 0 && activeTab === "all" && (
-                <p className="text-gray-500 py-8 text-center">
-                  No places or events found. Check back soon!
-                </p>
               )}
             </div>
 
@@ -271,7 +391,8 @@ export default function Home() {
                   Get updates in your inbox
                 </h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Subscribe to get new kid-friendly places and events delivered to you.
+                  Subscribe to get new kid-friendly places and events delivered
+                  to you.
                 </p>
                 <SubscribeForm />
               </div>
@@ -282,10 +403,10 @@ export default function Home() {
                   What is this?
                 </h3>
                 <p className="text-sm text-gray-600">
-                  SF All-Ages Social Club helps parents find places and events where
-                  they can socialize with their kids—without it being all about the kids.
-                  Think breweries with play areas, concerts in parks, and community events
-                  that welcome everyone.
+                  SF All-Ages Social Club helps parents find places and events
+                  where they can socialize with their kids—without it being all
+                  about the kids. Think breweries with play areas, concerts in
+                  parks, and community events that welcome everyone.
                 </p>
               </div>
             </div>

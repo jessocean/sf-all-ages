@@ -30,6 +30,19 @@ export const venues = sqliteTable("venues", {
   status: text("status").default("active"), // active, closed, unverified
   lastVerifiedAt: text("last_verified_at"),
   createdAt: text("created_at").default("CURRENT_TIMESTAMP"),
+
+  // Pricing
+  pricingType: text("pricing_type"), // "free" | "per_person" | "flat_rate" | "menu"
+  adultPrice: real("adult_price"), // Base adult admission/meal estimate
+  childPrice: real("child_price"), // Child price (4-8, if different)
+  toddlerPrice: real("toddler_price"), // Toddler price (0-3, often free)
+  teenPrice: real("teen_price"), // Teen price (9-17, if different from adult)
+  pricingNotes: text("pricing_notes"), // "Free for SF residents before 10am"
+
+  // Parking
+  parkingType: text("parking_type"), // "free" | "paid" | "street" | "none"
+  parkingCost: real("parking_cost"), // Hourly rate if paid
+  parkingNotes: text("parking_notes"), // "Free 2hr validated"
 });
 
 // Events
@@ -57,6 +70,14 @@ export const events = sqliteTable("events", {
   sourcePlatform: text("source_platform"), // funcheap, eventbrite, manual, etc.
   lastUpdatedAt: text("last_updated_at"),
   createdAt: text("created_at").default("CURRENT_TIMESTAMP"),
+
+  // Pricing
+  pricingType: text("pricing_type"), // "free" | "per_person" | "flat_rate" | "donation"
+  adultPrice: real("adult_price"),
+  childPrice: real("child_price"),
+  toddlerPrice: real("toddler_price"),
+  teenPrice: real("teen_price"),
+  pricingNotes: text("pricing_notes"),
 });
 
 // Email subscriptions
