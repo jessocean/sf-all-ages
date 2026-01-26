@@ -2,6 +2,24 @@
 
 import { useState } from "react";
 
+// Map full day names to abbreviated day names used in the database
+const DAY_TO_ABBR: Record<string, string> = {
+  sunday: "sun",
+  monday: "mon",
+  tuesday: "tue",
+  wednesday: "wed",
+  thursday: "thu",
+  friday: "fri",
+  saturday: "sat",
+};
+
+function getDayAbbreviation(date: Date): string {
+  const fullDay = date
+    .toLocaleDateString("en-US", { weekday: "long" })
+    .toLowerCase();
+  return DAY_TO_ABBR[fullDay] || fullDay;
+}
+
 export type TimeFilterOption = "now" | "today" | "weekend" | "date";
 
 export interface TimeFilterValue {
@@ -147,9 +165,7 @@ export function isAvailableForTimeFilter(
     if (hoursJson) {
       try {
         const hours = JSON.parse(hoursJson);
-        const dayOfWeek = now
-          .toLocaleDateString("en-US", { weekday: "long" })
-          .toLowerCase();
+        const dayOfWeek = getDayAbbreviation(now);
         const todayHours = hours[dayOfWeek];
 
         if (!todayHours) return false;
@@ -217,7 +233,7 @@ export function isAvailableForTimeFilter(
     if (hoursJson) {
       try {
         const hours = JSON.parse(hoursJson);
-        return hours.saturday || hours.sunday;
+        return hours.sat || hours.sun;
       } catch {
         return true;
       }
@@ -242,9 +258,7 @@ export function isAvailableForTimeFilter(
     if (hoursJson) {
       try {
         const hours = JSON.parse(hoursJson);
-        const dayOfWeek = timeFilter.specificDate
-          .toLocaleDateString("en-US", { weekday: "long" })
-          .toLowerCase();
+        const dayOfWeek = getDayAbbreviation(timeFilter.specificDate);
         return !!hours[dayOfWeek];
       } catch {
         return true;

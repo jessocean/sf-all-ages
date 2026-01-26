@@ -1,36 +1,114 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SF All-Ages Social Club
+
+A Next.js app for discovering family-friendly venues and events in San Francisco.
+
+## Tech Stack
+
+- **Framework**: Next.js 14 (App Router)
+- **Database**: SQLite (local) / Turso (production)
+- **ORM**: Drizzle ORM
+- **Styling**: Tailwind CSS
+
+## Database Architecture
+
+This project uses two database environments:
+
+| Environment | Database | URL | Purpose |
+|-------------|----------|-----|---------|
+| **Local Dev** | SQLite | `file:local.db` | Development and testing |
+| **Production** | Turso | `TURSO_DATABASE_URL` | Live production data |
+
+### Production Database (Turso)
+
+**Turso is the production database.** All data served to users in production comes from Turso.
+
+The Turso database is configured via environment variables:
+- `TURSO_DATABASE_URL` - The Turso connection URL
+- `TURSO_AUTH_TOKEN` - Authentication token for Turso
+
+### Local Development Database
+
+The `local.db` file is used for local development. Changes made locally do NOT automatically sync to production.
 
 ## Getting Started
 
-First, run the development server:
-
+1. Install dependencies:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Set up environment variables (copy from `.env.example`):
+```bash
+cp .env.example .env.local
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Push schema to local database:
+```bash
+npm run db:push
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Seed local database:
+```bash
+npx tsx scripts/seed.ts
+```
 
-## Learn More
+5. Run the development server:
+```bash
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000) to view the app.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Database Sync Workflow
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Syncing Local Data to Production
 
-## Deploy on Vercel
+When you've added or modified data in `local.db` and want to push it to production:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+# Load environment variables and run sync script
+source .env.local
+TURSO_DATABASE_URL=$TURSO_DATABASE_URL TURSO_AUTH_TOKEN=$TURSO_AUTH_TOKEN npx tsx scripts/sync-to-turso.ts
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This script will:
+1. Read all venues and events from `local.db`
+2. Clear existing venues/events in Turso (preserves subscriptions)
+3. Insert all local data into Turso
+
+### Pushing Schema Changes to Production
+
+```bash
+# Push schema to Turso
+TURSO_DATABASE_URL=$TURSO_DATABASE_URL TURSO_AUTH_TOKEN=$TURSO_AUTH_TOKEN npm run db:push
+```
+
+## Scripts
+
+| Script | Description |
+|--------|-------------|
+| `scripts/seed.ts` | Seed database with initial data |
+| `scripts/sync-to-turso.ts` | Sync local.db to Turso production |
+| `scripts/add-more-venues.ts` | Add additional venues |
+| `scripts/add-more-events.ts` | Add additional events |
+| `scripts/scrape.ts` | Scrape events from external sources |
+
+## Project Structure
+
+```
+src/
+├── app/                 # Next.js App Router pages
+│   ├── api/            # API routes
+│   └── admin/          # Admin interface
+├── components/         # React components
+├── lib/                # Utilities and database
+│   ├── db.ts          # Database connection
+│   ├── schema.ts      # Drizzle schema
+│   ├── pricing.ts     # Pricing calculations
+│   └── distance.ts    # Distance calculations
+└── scrapers/          # Event scrapers
+```
+
+## Deployment
+
+The app is deployed on Vercel with Turso as the production database. Environment variables must be configured in Vercel project settings.
