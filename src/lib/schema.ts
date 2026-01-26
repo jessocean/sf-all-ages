@@ -31,6 +31,7 @@ export const venues = sqliteTable("venues", {
   kidFocused: integer("kid_focused", { mode: "boolean" }).default(false),
 
   description: text("description"),
+  imageUrl: text("image_url"), // Photo of the venue
   websiteUrl: text("website_url"),
   status: text("status").default("active"), // active, closed, unverified
   lastVerifiedAt: text("last_verified_at"),
@@ -76,6 +77,7 @@ export const events = sqliteTable("events", {
   // false = adult event that welcomes kids (concert in park, street festival)
   kidFocused: integer("kid_focused", { mode: "boolean" }).default(false),
 
+  imageUrl: text("image_url"), // Photo for the event
   sourceUrl: text("source_url"),
   sourcePlatform: text("source_platform"), // funcheap, eventbrite, manual, etc.
   lastUpdatedAt: text("last_updated_at"),

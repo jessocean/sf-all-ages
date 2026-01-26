@@ -68,20 +68,37 @@ export function VenueCard({
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-4 hover:border-gray-300 transition-colors">
-      <div className="flex justify-between items-start">
+      <div className="flex gap-4">
+        {/* Image */}
+        {venue.imageUrl && (
+          <div className="flex-shrink-0">
+            <img
+              src={venue.imageUrl}
+              alt={venue.name}
+              className="w-24 h-24 object-cover rounded-lg"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          </div>
+        )}
+
+        {/* Content */}
         <div className="flex-1 min-w-0">
-          <h3 className="font-medium text-gray-900 truncate">
-            {emoji} {venue.name}
-          </h3>
+          <div className="flex justify-between items-start">
+            <h3 className="font-medium text-gray-900 truncate">
+              {emoji} {venue.name}
+            </h3>
+            {scoreLabel && (
+              <span className="ml-2 px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full whitespace-nowrap">
+                {scoreLabel}
+              </span>
+            )}
+          </div>
           <p className="text-sm text-gray-600 mt-1 line-clamp-2">
             {venue.description}
           </p>
         </div>
-        {scoreLabel && (
-          <span className="ml-2 px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full whitespace-nowrap">
-            {scoreLabel}
-          </span>
-        )}
       </div>
 
       {/* Cost and Travel Times */}
