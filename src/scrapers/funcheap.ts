@@ -47,17 +47,37 @@ function delay(ms: number): Promise<void> {
 }
 
 // Parse date strings from Funcheap format
+// Format: "Sunday, January 25" (from date headers)
 function parseEventDate(dateStr: string): { start: string; end: string | null } {
-  // Funcheap formats vary, but commonly like "January 25, 2026 @ 2:00 pm - 4:00 pm"
   const now = new Date();
+  const currentYear = now.getFullYear();
 
   try {
-    // Try to extract date and time
-    const dateMatch = dateStr.match(/(\w+ \d+, \d+)/);
-    const timeMatch = dateStr.match(/@ (\d+:\d+ [ap]m)(?: - (\d+:\d+ [ap]m))?/i);
+    // Format: "Sunday, January 25" or "Monday, January 27"
+    const dateMatch = dateStr.match(/(\w+),\s*(\w+)\s+(\d+)/);
 
     if (dateMatch) {
-      const dateBase = new Date(dateMatch[1]);
+      const [, , month, day] = dateMatch;
+      // Parse with current year
+      const dateBase = new Date(`${month} ${day}, ${currentYear}`);
+
+      // If date is in the past, assume next year
+      if (dateBase < now) {
+        dateBase.setFullYear(currentYear + 1);
+      }
+
+      // Default to 10am start time for events without specific times
+      dateBase.setHours(10, 0, 0, 0);
+
+      return { start: dateBase.toISOString(), end: null };
+    }
+
+    // Also try the old format: "January 25, 2026 @ 2:00 pm - 4:00 pm"
+    const fullDateMatch = dateStr.match(/(\w+ \d+, \d+)/);
+    const timeMatch = dateStr.match(/@ (\d+:\d+ [ap]m)(?: - (\d+:\d+ [ap]m))?/i);
+
+    if (fullDateMatch) {
+      const dateBase = new Date(fullDateMatch[1]);
 
       if (timeMatch && timeMatch[1]) {
         const startTime = parseTime(timeMatch[1]);
@@ -108,6 +128,7 @@ function analyzeKidFriendliness(text: string): {
   teenFriendly: boolean;
   hasKidsActivities: boolean;
   outdoor: boolean;
+  kidFocused: boolean;
 } {
   const lowerText = text.toLowerCase();
 
@@ -145,6 +166,22 @@ function analyzeKidFriendliness(text: string): {
     "lawn",
   ];
 
+  // Keywords that indicate kid-focused (primarily for kids, not adults-welcome-with-kids)
+  const kidFocusedKeywords = [
+    "storytime",
+    "story time",
+    "puppet",
+    "children's museum",
+    "kids' concert",
+    "children's concert",
+    "preschool",
+    "ages 2-5",
+    "ages 3-5",
+    "for kids",
+    "for children",
+    "kids only",
+  ];
+
   return {
     toddlerFriendly:
       toddlerKeywords.some((kw) => lowerText.includes(kw)) ||
@@ -153,6 +190,7 @@ function analyzeKidFriendliness(text: string): {
     teenFriendly: true, // Default true
     hasKidsActivities: kidActivityKeywords.some((kw) => lowerText.includes(kw)),
     outdoor: outdoorKeywords.some((kw) => lowerText.includes(kw)),
+    kidFocused: kidFocusedKeywords.some((kw) => lowerText.includes(kw)),
   };
 }
 
@@ -176,35 +214,28 @@ async function scrapeEventsList(): Promise<ScrapedEvent[]> {
     const html = await response.text();
     const $ = cheerio.load(html);
 
-    // Funcheap uses article elements for event cards
-    const eventElements = $("article.event, .event-card, .tec-event").slice(
-      0,
-      20
-    ); // Limit to 20 events
+    // Funcheap uses div.tanbox for event cards with span.title containing the link
+    const eventElements = $("div.tanbox").slice(0, 20); // Limit to 20 events
 
     for (const el of eventElements.toArray()) {
       try {
         const $el = $(el);
 
-        const name =
-          $el.find("h2 a, .event-title a, h3 a").first().text().trim() ||
-          $el.find("h2, .event-title, h3").first().text().trim();
-
-        const link = $el.find("h2 a, .event-title a, h3 a").first().attr("href") || "";
+        const name = $el.find("span.title a").first().text().trim();
+        const link = $el.find("span.title a").first().attr("href") || "";
 
         const description =
-          $el.find(".event-excerpt, .event-description, p").first().text().trim() ||
-          name;
+          $el.find(".storycontent").first().text().trim() || name;
 
-        const dateText =
-          $el.find(".event-date, .event-time, time").first().text().trim() || "";
-
-        const location =
-          $el
-            .find(".event-location, .event-venue, .venue")
-            .first()
-            .text()
-            .trim() || "San Francisco, CA";
+        // Find the preceding date header by walking up the DOM
+        let dateText = "";
+        let prev = $el.prev();
+        while (prev.length && !prev.hasClass("archive_date_title")) {
+          prev = prev.prev();
+        }
+        if (prev.hasClass("archive_date_title")) {
+          dateText = prev.find("h3").text().trim();
+        }
 
         if (name && link) {
           const { start, end } = parseEventDate(dateText);
@@ -213,7 +244,7 @@ async function scrapeEventsList(): Promise<ScrapedEvent[]> {
           events.push({
             name: name.substring(0, 200), // Limit name length
             description: description.substring(0, 500), // Limit description
-            address: location,
+            address: "San Francisco, CA",
             startTime: start,
             endTime: end,
             sourceUrl: link.startsWith("http") ? link : `${FUNCHEAP_BASE_URL}${link}`,
@@ -270,6 +301,7 @@ async function saveEvents(scrapedEvents: ScrapedEvent[]): Promise<number> {
         toddlerFriendly: analysis.toddlerFriendly,
         youngKidFriendly: analysis.youngKidFriendly,
         teenFriendly: analysis.teenFriendly,
+        kidFocused: analysis.kidFocused,
         sourceUrl: event.sourceUrl,
         sourcePlatform: "funcheap",
         lastUpdatedAt: now,

@@ -6,7 +6,7 @@ export interface ScoredItem {
   item: Venue | Event;
   type: "venue" | "event";
   relevanceScore: number; // 0-100
-  distanceMiles: number;
+  distanceMiles?: number;
   matchReasons: string[];
 }
 
@@ -178,7 +178,9 @@ export function sortByRelevance(items: ScoredItem[]): ScoredItem[] {
     if (b.relevanceScore !== a.relevanceScore) {
       return b.relevanceScore - a.relevanceScore;
     }
-    // Secondary: distance (closer first)
-    return a.distanceMiles - b.distanceMiles;
+    // Secondary: distance (closer first), items without distance go last
+    const aDist = a.distanceMiles ?? Infinity;
+    const bDist = b.distanceMiles ?? Infinity;
+    return aDist - bDist;
   });
 }

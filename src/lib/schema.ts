@@ -25,6 +25,11 @@ export const venues = sqliteTable("venues", {
   youngKidFriendly: integer("young_kid_friendly", { mode: "boolean" }).default(false),
   teenFriendly: integer("teen_friendly", { mode: "boolean" }).default(false),
 
+  // Kid-focused vs adult-friendly-with-kids
+  // true = primarily for kids (children's museum, storytime, playground)
+  // false = adult venue/event that welcomes kids (brewery with play area, concert in park)
+  kidFocused: integer("kid_focused", { mode: "boolean" }).default(false),
+
   description: text("description"),
   websiteUrl: text("website_url"),
   status: text("status").default("active"), // active, closed, unverified
@@ -65,6 +70,11 @@ export const events = sqliteTable("events", {
   toddlerFriendly: integer("toddler_friendly", { mode: "boolean" }).default(false),
   youngKidFriendly: integer("young_kid_friendly", { mode: "boolean" }).default(false),
   teenFriendly: integer("teen_friendly", { mode: "boolean" }).default(false),
+
+  // Kid-focused vs adult-friendly-with-kids
+  // true = primarily for kids (storytime, children's concert)
+  // false = adult event that welcomes kids (concert in park, street festival)
+  kidFocused: integer("kid_focused", { mode: "boolean" }).default(false),
 
   sourceUrl: text("source_url"),
   sourcePlatform: text("source_platform"), // funcheap, eventbrite, manual, etc.

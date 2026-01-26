@@ -20,7 +20,7 @@ interface ScoredVenue extends Venue {
 }
 
 interface ScoredEvent extends Event {
-  distance: number;
+  distance?: number;
   relevanceScore: number;
   matchReasons: string[];
   venueName?: string;
@@ -120,6 +120,9 @@ export default function Home() {
         if (party.kids > 0 && !venue.youngKidFriendly) return false;
         if (party.teens > 0 && !venue.teenFriendly) return false;
 
+        // Filter out kid-focused venues unless checkbox is checked
+        if (!filters.showKidFocused && venue.kidFocused) return false;
+
         return true;
       })
       .sort((a, b) => {
@@ -143,18 +146,18 @@ export default function Home() {
                 venue.latitude,
                 venue.longitude
               )
-            : 0;
+            : undefined;
 
         const { score, reasons } = calculateRelevanceScore(
           event,
           "event",
-          distance,
+          distance ?? 0,
           filters.party
         );
 
         // Get estimated travel times based on distance
         const travelTimes =
-          filters.location && distance > 0
+          filters.location && distance !== undefined && distance > 0
             ? getEstimatedTravelTimes(distance)
             : undefined;
 
@@ -192,6 +195,9 @@ export default function Home() {
         if (party.toddlers > 0 && !event.toddlerFriendly) return false;
         if (party.kids > 0 && !event.youngKidFriendly) return false;
         if (party.teens > 0 && !event.teenFriendly) return false;
+
+        // Filter out kid-focused events unless checkbox is checked
+        if (!filters.showKidFocused && event.kidFocused) return false;
 
         return true;
       })
