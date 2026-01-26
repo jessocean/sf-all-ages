@@ -33,6 +33,7 @@ export default function Home() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"all" | "venues" | "events">("all");
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -303,7 +304,7 @@ export default function Home() {
                     </p>
                   ) : (
                     <>
-                      {allItems.slice(0, 10).map((item) =>
+                      {(showAll ? allItems : allItems.slice(0, 10)).map((item) =>
                         item.type === "venue" ? (
                           <VenueCard
                             key={`venue-${item.item.id}`}
@@ -331,10 +332,21 @@ export default function Home() {
                           />
                         )
                       )}
-                      {allItems.length > 10 && (
-                        <p className="text-sm text-gray-500 text-center py-2">
-                          Showing top 10 matches. Use filters to narrow results.
-                        </p>
+                      {allItems.length > 10 && !showAll && (
+                        <button
+                          onClick={() => setShowAll(true)}
+                          className="w-full py-3 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                        >
+                          Show all {allItems.length} matches
+                        </button>
+                      )}
+                      {showAll && allItems.length > 10 && (
+                        <button
+                          onClick={() => setShowAll(false)}
+                          className="w-full py-3 text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors"
+                        >
+                          Show fewer
+                        </button>
                       )}
                     </>
                   )}
