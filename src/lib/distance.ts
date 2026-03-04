@@ -24,6 +24,17 @@ function toRad(deg: number): number {
   return deg * (Math.PI / 180);
 }
 
+export function getDistanceMiles(
+  from: { lat: number; lng: number } | null | undefined,
+  toLat?: number | null,
+  toLng?: number | null
+): number | undefined {
+  if (!from || toLat === null || toLat === undefined || toLng === null || toLng === undefined) {
+    return undefined;
+  }
+  return calculateDistance(from.lat, from.lng, toLat, toLng);
+}
+
 // Format distance for display
 export function formatDistance(miles: number): string {
   if (miles < 0.1) {

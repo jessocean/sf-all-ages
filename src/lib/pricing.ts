@@ -30,8 +30,22 @@ export function calculateMinCost(
     return 0;
   }
 
+  if (item.pricingType === "flat_rate") {
+    const flatRate =
+      item.adultPrice ??
+      item.childPrice ??
+      item.teenPrice ??
+      item.toddlerPrice ??
+      null;
+    return flatRate ?? -1;
+  }
+
   // If no pricing data, return -1 to indicate unknown
   if (!item.pricingType) {
+    return -1;
+  }
+
+  if (item.pricingType === "menu") {
     return -1;
   }
 

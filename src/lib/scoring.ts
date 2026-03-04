@@ -109,17 +109,20 @@ function getAgeMatchScore(item: Venue | Event, party: Party): number {
 export function calculateRelevanceScore(
   item: Venue | Event,
   type: "venue" | "event",
-  distanceMiles: number,
+  distanceMiles: number | undefined,
   party: Party
 ): { score: number; reasons: string[] } {
   const reasons: string[] = [];
 
   // Distance score
-  const distanceScore = getDistanceScore(distanceMiles);
-  if (distanceMiles < 1) {
-    reasons.push("Very close");
-  } else if (distanceMiles < 2) {
-    reasons.push("Nearby");
+  const distanceScore =
+    distanceMiles === undefined ? 50 : getDistanceScore(distanceMiles);
+  if (distanceMiles !== undefined) {
+    if (distanceMiles < 1) {
+      reasons.push("Very close");
+    } else if (distanceMiles < 2) {
+      reasons.push("Nearby");
+    }
   }
 
   // Cost score
